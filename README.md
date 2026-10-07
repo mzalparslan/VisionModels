@@ -13,7 +13,7 @@ Same network trains in three ways (`ExecutionStrategy`):
 | Strategy | How | One MNIST Epoch (60,000 images) | Speedup | Test accuracy after 1 Epoch |
 |---|---|---|---|---|
 | `Sequential` | one CPU thread | 94.4 s | 1x | 97.53% |
-| `Parallel` | 16 CPU threads, Parallel Runs | 19.7 s | 4.8x | 97.53% |
+| `Parallel` | 16 CPU threads, results bit-identical to Sequential | 19.7 s | 4.8x | 97.53% |
 | `Cuda` | NVIDIA GPU, everything resident in GPU memory | 0.48 s | 197x | 97.58% |
 
 Release build, batch 64, Adam (lr 0.001), RTX 4060 Ti and a 16-thread CPU. Ten
