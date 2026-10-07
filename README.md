@@ -1,134 +1,129 @@
 # VisionModels
 
-A from-scratch **C++20, header-only** implementation of convolutional neural
-networks (CNNs), trained to recognize handwritten digits (MNIST): the classic
-first computer-vision task.
+A from-scratch **C++20** implementation of convolutional neural networks (CNNs), 
+trained to recognize handwritten digits (MNIST): classic first computer-vision task.
 
 There are no dependencies and no framework. Tensors, convolution, pooling,
 backpropagation and optimizers are all written by hand, and every gradient is
-checked against finite differences in the test suite. Google Test is used for
-the tests only.
+checked against finite differences in test suite. Google Test is used for
+tests only.
 
-The same network trains three ways (`ExecutionStrategy`):
+Same network trains in three ways (`ExecutionStrategy`):
 
-| Strategy | How | One MNIST epoch (60,000 images) | Speedup | Test accuracy after 1 epoch |
+| Strategy | How | One MNIST Epoch (60,000 images) | Speedup | Test accuracy after 1 Epoch |
 |---|---|---|---|---|
 | `Sequential` | one CPU thread | 94.4 s | 1x | 97.53% |
 | `Parallel` | 16 CPU threads, results bit-identical to Sequential | 19.7 s | 4.8x | 97.53% |
 | `Cuda` | NVIDIA GPU, everything resident in GPU memory | 0.48 s | 197x | 97.58% |
 
 Release build, batch 64, Adam (lr 0.001), RTX 4060 Ti and a 16-thread CPU. Ten
-epochs on the GPU (4.7 s) reach **98.82%** test accuracy.
+epochs on GPU (4.7 s) reach **98.82%** test accuracy.
 
-> This is a learning project. The kernels are the direct ("naive") algorithms,
-> written to be read next to the math, not to compete with cuDNN or oneDNN.
-
-It is a sibling of the MachineLearningModels (classical ML) and LanguageModels
-(RNN, transformer, BERT, GPT) repositories and uses the same layout.
+> This is a learning project. Kernels are direct ("naive") algorithms,
+> written to be read next to math, not to compete with cuDNN or oneDNN.
 
 ## Contents
 
-- [The CUDA version](#the-cuda-version)
-- [The model](#the-model)
-- [Repository layout](#repository-layout)
-- [Getting started](#getting-started)
-- [Using the library](#using-the-library)
-- [How the three strategies work](#how-the-three-strategies-work)
+- [CUDA Version](#cuda-version)
+- [Model](#model)
+- [Repository Layout](#repository-layout)
+- [Getting Started](#getting-started)
+- [Using Library](#using-library)
+- [How Three Strategies Work](#how-three-strategies-work)
 - [Tests](#tests)
-- [Ideas for next steps](#ideas-for-next-steps)
 - [License](#license)
 
-## The CUDA version
+## CUDA Version
 
 `cuda::GpuConvNet` (`VisionModels/include/cuda/GpuConvNet.h`, implemented in
-`VisionModels.Cuda/src/GpuConvNet.cu`) trains the same network as the CPU
-`ConvNet`, entirely on the GPU.
+`VisionModels.Cuda/src/GpuConvNet.cu`) trains same network as CPU `ConvNet`, 
+entirely on GPU.
 
-### Keeping the data on the GPU
+### Keeping Data on GPU
 
-Copies between CPU and GPU memory are slow compared with the arithmetic on
-either side, so the design keeps them to a minimum:
+Copies between CPU and GPU memory are slow compared with arithmetic on
+either side, so design keeps them to a minimum:
 
 | Where | What | When it crosses |
 |---|---|---|
-| GPU | weights, gradients, momentum / Adam state | up once at the start, down after each epoch |
-| GPU | activations and their gradients, one buffer per layer sized for the largest batch | never |
-| GPU | the whole training set (60,000 x 784 floats = 188 MB) | up once |
-| CPU -> GPU | the batch's 64 image indices | every step (256 bytes) |
-| GPU -> CPU | the batch's 64 losses | every step (256 bytes) |
+| GPU | weights, gradients, momentum / Adam state | up once at start, down after each epoch |
+| GPU | activations and their gradients, one buffer per layer sized for largest batch | never |
+| GPU | Whole training set (60,000 x 784 floats = 188 MB) | up once |
+| CPU -> GPU | Batch's 64 image indices | every step (256 bytes) |
+| GPU -> CPU | Batch's 64 losses | every step (256 bytes) |
 
-A `gatherBatch` kernel copies the chosen images out of the resident training
-set into the input buffer. The shuffling stays on the CPU, using the same
-random engine as the CPU strategies, so all three strategies see the same
-batches.
+A `gatherBatch` kernel copies chosen images out of resident training
+set into input buffer. Shuffling stays on CPU, using same random 
+engine as CPU strategies, so all three strategies see same batches.
 
-### One thread per output number
+### One Thread per Output Number
 
 Every kernel (`src/detail/ConvNetKernels.cuh`) gives one GPU thread one number
-to produce and mirrors a loop of the CPU layer:
+to produce and mirrors a loop of CPU layer:
 
 | Kernel | One thread computes |
 |---|---|
 | `conv2dForward` | one output pixel of one feature map |
 | `conv2dBackwardInput` | one input pixel's gradient |
-| `conv2dBackwardParametersPartial` + `reduceBatch` | one weight's gradient over one sample, then summed over the batch |
+| `conv2dBackwardParametersPartial` + `reduceBatch` | one weight's gradient over one sample, then summed over batch |
 | `maxPoolForward` / `maxPoolBackward` | one pooling window |
 | `denseForward`, `denseBackwardParameters`, `denseBackwardInput` | one output, one weight gradient, one input gradient |
 | `softmaxCrossEntropy` | one sample's loss and logit gradients |
 | `sgdUpdate`, `momentumUpdate`, `adamUpdate` | one weight |
 
-Two places differ from the CPU loops, both to avoid many threads adding into
-the same memory:
+Two places differ from CPU loops, both to avoid many threads adding into
+same memory:
 
-- **Convolution input gradient.** The CPU *scatters*: each output gradient is
-  added to every input pixel under its window. On the GPU that would need atomic
-  adds. Instead each thread takes one input pixel and *gathers* from the output
+- **Convolution input gradient.** CPU *scatters*: each output gradient is
+  added to every input pixel under its window. On GPU that would need atomic
+  adds. Instead each thread takes one input pixel and *gathers* from output
   positions whose window covered it: `oh = (ih + padding - kh) / stride`, when
   that divides evenly and is in range.
-- **Convolution weight gradient.** One thread per weight summing over the whole
-  batch would use only 80 threads for the first layer and leave the GPU nearly
-  idle. The sum is split in two: one thread per (sample, weight), then one per
-  weight summing across the batch.
+- **Convolution weight gradient.** One thread per weight summing over whole
+  batch would use only 80 threads for first layer and leave GPU nearly
+  idle. Sum is split in two: one thread per (sample, weight), then one per
+  weight summing across batch.
 
 Max pooling's backward pass does use `atomicAdd`, because overlapping windows
-(stride < kernel) can share a winner; with 2x2 windows and stride 2 the
-additions never collide.
+(stride < kernel) can share a winner; with 2x2 windows and stride 2 additions 
+never collide.
 
 ### Accuracy
 
-The GPU computes in float, sums in a different order than the CPU, and fuses
-multiplies and adds (FMA). Its results therefore match the CPU `ConvNet<float>`
-to within about 1e-4 relative, not bit for bit. The unit tests check this for
+GPU computes in float, sums in a different order than CPU, and fuses
+multiplies and adds (FMA). Its results therefore match CPU `ConvNet<float>`
+to within about 1e-4 relative, not bit for bit. Unit tests check this for
 logits, gradients and optimizer steps. Training curves on MNIST are
 indistinguishable (loss 0.2251 after one epoch with every strategy).
 
 ### Building
 
-The `VisionModels.Cuda` project compiles `.cu` files through `nvcc-build.cmd`,
-which sets up the MSVC v143 environment for nvcc (CUDA 13 does not accept
+`VisionModels.Cuda` project compiles `.cu` files through `nvcc-build.cmd`,
+which sets up MSVC v143 environment for nvcc (CUDA 13 does not accept
 MSVC 19.50+ as its host compiler) and targets compute capability 89 by default:
 
 ```bash
 msbuild VisionModels.sln /p:Configuration=Release /p:Platform=x64 /p:CudaComputeCapability=86
 ```
 
-Without the CUDA Toolkit the project compiles `CudaUnavailable.cpp` and
-`GpuConvNetUnavailable.cpp` instead, so everything links and `Cuda` reports
-that it is not available.
+Without CUDA Toolkit, project still is able to compile `CudaUnavailable.cpp` and 
+`GpuConvNetUnavailable.cpp`. So everything links and `Cuda` reports that 
+it is not available.
 
-### Where the time goes, and what would make it faster
+### Where Time Goes, and What Would Make It Faster
 
 One epoch takes about 0.47 s, roughly 0.5 ms per step of 64 images. At this
-size the GPU is mostly waiting on kernel launches (about 35 per step: 9 forward,
-17 backward, 1 gather, 8 optimizer) and the per-step loss copy, not on arithmetic. Things to try:
+size GPU is mostly waiting on kernel launches (about 35 per step: 9 forward,
+17 backward, 1 gather, 8 optimizer) and per-step loss copy, not on arithmetic. 
 
-- launch with CUDA Graphs, or fuse Conv2D + ReLU and Dense + ReLU;
-- larger batches (e.g. `--batch 256`);
-- shared-memory tiling in the convolution and dense kernels, or im2col plus a
+Things to try:
+- Launch with CUDA Graphs, or fuse Conv2D + ReLU and Dense + ReLU;
+- Larger batches (e.g. `--batch 256`);
+- Shared-memory tiling in convolution and dense kernels, or im2col plus a
   tiled matrix multiply;
-- profile it with Nsight Compute (already installed) to see which kernels dominate.
+- Profile it with Nsight Compute to see which kernels dominate.
 
-## The model
+## Model
 
 `makeDigitCnn()` in `models/DigitCnn.h` builds a small LeNet-style network:
 
@@ -152,15 +147,15 @@ followed by softmax cross-entropy loss. Each header explains its layer:
 | Idea | Header |
 |---|---|
 | Convolution: weight sharing, padding, stride, one bias per filter, He init | `layers/Conv2D.h` |
-| Max pooling and routing its gradient to the window's winner | `layers/MaxPool2D.h` |
+| Max pooling and routing its gradient to window's winner | `layers/MaxPool2D.h` |
 | ReLU, Flatten, fully connected layer | `layers/ReLU.h`, `layers/Flatten.h`, `layers/Dense.h` |
 | Softmax + cross-entropy, computed together for stability | `layers/SoftmaxCrossEntropy.h` |
 | SGD, SGD with momentum, Adam | `common/Optimizer.h`, `common/Parameter.h` |
-| The network: shape checking, forward, backward, training step | `models/ConvNet.h` |
+| Network: shape checking, forward, backward, training step | `models/ConvNet.h` |
 | MNIST's IDX file format | `data/MnistLoader.h` |
 | Accuracy, precision, recall, F1, confusion matrix | `metrics/ConfusionMatrix.h` |
 
-## Repository layout
+## Repository Layout
 
 ```
 VisionModels.sln
@@ -171,10 +166,10 @@ VisionModels/include/        header-only library
   data/                      ImageDataset, MnistLoader, SyntheticDigits
   metrics/                   ConfusionMatrix
   pipelines/                 ExecutionStrategy, ImageClassifierTrainer
-  cuda/                      CudaRuntime.h, GpuConvNet.h (plain C++ interfaces to the GPU code)
+  cuda/                      CudaRuntime.h, GpuConvNet.h (plain C++ interfaces to GPU code)
 VisionModels.Cuda/           static library: CUDA kernels (.cu, built by nvcc) or CPU-only stand-ins
 VisionModels.Examples/       Main.cpp: train on MNIST, compare strategies
-VisionModels.Tests/          Google Test unit tests
+VisionModels.Tests/          Google Test Unit Tests
 scripts/download_mnist.*     fetch MNIST into resources/mnist
 ```
 
@@ -187,19 +182,19 @@ powershell -ExecutionPolicy Bypass -File scripts/download_mnist.ps1
 ```
 
 (or `sh scripts/download_mnist.sh` / `make mnist` on Linux). About 11 MB,
-unpacked into `resources/mnist/`, which git ignores. Without it the example
+unpacked into `resources/mnist/`, which git ignores. Without it example
 falls back to generated seven-segment digits (`--synthetic`).
 
 ### 2. Build
 
-**Visual Studio 2026** (toolsets v145, plus v143 for the CUDA project): open
+**Visual Studio 2026** (toolsets v145, plus v143 for CUDA project): open
 `VisionModels.sln`, pick **Release | x64**, build. NuGet restores Google Test for
-the test project. If the CUDA Toolkit is installed (`CUDA_PATH` set), the GPU
+test project. If CUDA Toolkit is installed (`CUDA_PATH` set), GPU
 code is compiled with nvcc for compute capability 8.9; use
-`/p:CudaComputeCapability=86` (etc.) for another GPU. Without the toolkit
+`/p:CudaComputeCapability=86` (etc.) for another GPU. Without toolkit
 everything still builds, and `Cuda` reports that it is not available.
 
-**Linux / WSL** (g++ 13 or newer, `libgtest-dev` for the tests):
+**Linux / WSL** (g++ 13 or newer, `libgtest-dev` for tests):
 
 ```bash
 make
@@ -215,19 +210,19 @@ bin/Release/x64/VisionModels.Examples.exe --strategy cuda --epochs 10
 
 | Option | Meaning |
 |---|---|
-| `--strategy S` | `sequential`, `parallel` (default), `cuda`, or `all` to train the same model with each and compare |
-| `--epochs N` | passes over the training set (default 2) |
+| `--strategy S` | `sequential`, `parallel` (default), `cuda`, or `all` to train same model with each and compare |
+| `--epochs N` | passes over training set (default 2) |
 | `--batch N` | images per step (default 64) |
-| `--limit N` | train on the first N images only, e.g. to try Sequential quickly |
+| `--limit N` | train on first N images only, e.g. to try Sequential quickly |
 | `--lr X`, `--optimizer O` | learning rate (0.001) and `adam`, `momentum` or `sgd` |
 | `--threads N` | threads for `parallel` (default: all hardware threads) |
 | `--synthetic` | generated digits instead of MNIST |
 | `--show N` | draw N misclassified test digits as text art |
 
-It prints the model summary, the loss while training, then the test accuracy,
-the confusion matrix and some mistakes.
+It prints model summary, loss while training, then test accuracy,
+confusion matrix and some mistakes.
 
-## Using the library
+## Using Library
 
 ```cpp
 #include "DigitCnn.h"
@@ -261,30 +256,30 @@ net.addConv2D(6, 5, 1, 2, rng).addReLU().addMaxPool2D(2, 2)
 float loss = net.trainBatch(images, labels, OptimizerSettings::withMomentum(0.01), /*threads*/ 8);
 ```
 
-`add...()` checks that each layer fits the one before, so a wrong size is
-reported when the network is built, not during training.
+`add...()` checks that each layer fits one before, so a wrong size is
+reported when network is built, not during training.
 
-## How the three strategies work
+## How three strategies work
 
 **Sequential.** Each layer is written as loops over "items", where an item owns
-its outputs: one output feature map in the convolution's forward pass, one
-filter's weight gradient, one sample's input gradient. Sequential runs all the
-items on the calling thread.
+its outputs: one output feature map in convolution's forward pass, one filter's 
+weight gradient, one sample's input gradient. Sequential runs all items 
+on calling thread.
 
-**Parallel.** The same loops, split into chunks on a thread pool
-(`common/ParallelFor.h`). Each item sums its inputs in the same fixed order
+**Parallel.** Same loops, split into chunks on a thread pool
+(`common/ParallelFor.h`). Each item sums its inputs in same fixed order
 whichever thread runs it, so Parallel produces **bit-identical** weights and
-losses (the tests check this). Getting that property means never letting two
-threads add into the same number. For example, the weight gradient is split
+losses (tests check this). Getting that property means never letting two
+threads add into same number. For example, weight gradient is split
 by filter, not by sample.
 
-**Cuda.** `cuda::GpuConvNet` rebuilds the network on the GPU from
-`ConvNet::specs()`. The weights, gradients, Adam state, every activation and the
-whole training set stay in GPU memory, so a step sends up only 64 image indices
+**Cuda.** `cuda::GpuConvNet` rebuilds network on GPU from
+`ConvNet::specs()`. Weights, gradients, Adam state, every activation and whole 
+training set stay in GPU memory, so a step sends up only 64 image indices
 and gets back 64 losses. Each kernel gives one GPU thread one output number and
-mirrors a CPU loop. The trainer copies the weights back into the `ConvNet` after
-each epoch, so the model is always usable on the CPU. Results match the CPU to
-within float rounding. See [The CUDA version](#the-cuda-version).
+mirrors a CPU loop. Trainer copies weights back into `ConvNet` after
+each epoch, so model is always usable on CPU. Results match CPU to
+within float rounding. See [CUDA version](#cuda-version).
 
 ## Tests
 
@@ -294,21 +289,21 @@ bin/Release/x64/VisionModels.Tests.exe
 
 57 tests (about 10 s in Release), including:
 
-- finite-difference gradient checks for every layer (with padding, stride and
+- Finite-difference gradient checks for every layer (with padding, stride and
   overlapping pool windows) and for a whole network;
-- known forward values for convolution, pooling, dense and loss;
+- Known forward values for convolution, pooling, dense and loss;
 - Parallel == Sequential, bit for bit, for layers and for whole training runs;
 - GPU vs CPU logits, gradients and SGD / momentum / Adam steps (skipped without a GPU);
-- the network learning synthetic digits to over 90% on each strategy;
-- the IDX reader against hand-made files, including broken ones.
+- Network learning synthetic digits to over 90% on each strategy;
+- IDX reader against hand-made files, including broken ones.
 
 ## Ideas for next steps
 
-- **im2col + matrix multiply** for Conv2D, and tiled shared-memory kernels on the GPU.
-- **Batch normalization** (its shift makes the conv bias redundant) and **dropout**.
-- **Data augmentation**: small shifts and rotations of the digits.
-- **CIFAR-10** (32x32 color, 3 channels): the model already takes any `[C, H, W]`.
-- Global average pooling instead of the big Dense layer (50k of the 52k parameters).
+- **im2col + matrix multiply** for Conv2D, and tiled shared-memory kernels on GPU.
+- **Batch normalization** (its shift makes conv bias redundant) and **dropout**.
+- **Data augmentation**: small shifts and rotations of digits.
+- **CIFAR-10** (32x32 color, 3 channels): model already takes any `[C, H, W]`.
+- Global average pooling instead of big Dense layer (50k of 52k parameters).
 
 ## License
 
