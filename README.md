@@ -13,27 +13,28 @@ Same network trains in three ways (`ExecutionStrategy`):
 | Strategy | How | One MNIST Epoch (60,000 images) | Speedup | Test accuracy after 1 Epoch |
 |---|---|---|---|---|
 | `Sequential` | one CPU thread | 94.4 s | 1x | 97.53% |
-| `Parallel` | 16 CPU threads, results bit-identical to Sequential | 19.7 s | 4.8x | 97.53% |
+| `Parallel` | 16 CPU threads, Parallel Runs | 19.7 s | 4.8x | 97.53% |
 | `Cuda` | NVIDIA GPU, everything resident in GPU memory | 0.48 s | 197x | 97.58% |
 
 Release build, batch 64, Adam (lr 0.001), RTX 4060 Ti and a 16-thread CPU. Ten
 epochs on GPU (4.7 s) reach **98.82%** test accuracy.
 
-> This is a learning project. Kernels are direct ("naive") algorithms,
-> written to be read next to math, not to compete with cuDNN or oneDNN.
+> This is a learning project. Kernels are direct "naive" algorithms,
+> written as self study projects, not to compete with cuDNN or oneDNN.
 
 ## Contents
 
-- [CUDA Version](#cuda-version)
-- [Model](#model)
-- [Repository Layout](#repository-layout)
+- [CUDA Implementation](#cuda-implementation)
 - [Getting Started](#getting-started)
+- [Repository Layout](#repository-layout)
 - [Using Library](#using-library)
+- [Model](#model)
 - [How Three Strategies Work](#how-three-strategies-work)
 - [Tests](#tests)
+- [Future Ideas](#future-ideas)
 - [License](#license)
 
-## CUDA Version
+## CUDA Implementation
 
 `cuda::GpuConvNet` (`VisionModels/include/cuda/GpuConvNet.h`, implemented in
 `VisionModels.Cuda/src/GpuConvNet.cu`) trains same network as CPU `ConvNet`, 
@@ -123,57 +124,7 @@ Things to try:
   tiled matrix multiply;
 - Profile it with Nsight Compute to see which kernels dominate.
 
-## Model
-
-`makeDigitCnn()` in `models/DigitCnn.h` builds a small LeNet-style network:
-
-```
-Input                                     [1, 28, 28]
-Conv2D(1 -> 8, 3x3, stride 1, padding 1)  [8, 28, 28]   80 parameters
-ReLU                                      [8, 28, 28]
-MaxPool2D(2x2, stride 2)                  [8, 14, 14]
-Conv2D(8 -> 16, 3x3, stride 1, padding 1) [16, 14, 14]  1168 parameters
-ReLU                                      [16, 14, 14]
-MaxPool2D(2x2, stride 2)                  [16, 7, 7]
-Flatten                                   [784]
-Dense(784 -> 64)                          [64]          50240 parameters
-ReLU                                      [64]
-Dense(64 -> 10)                           [10]          650 parameters
-Total parameters: 52138
-```
-
-followed by softmax cross-entropy loss. Each header explains its layer:
-
-| Idea | Header |
-|---|---|
-| Convolution: weight sharing, padding, stride, one bias per filter, He init | `layers/Conv2D.h` |
-| Max pooling and routing its gradient to window's winner | `layers/MaxPool2D.h` |
-| ReLU, Flatten, fully connected layer | `layers/ReLU.h`, `layers/Flatten.h`, `layers/Dense.h` |
-| Softmax + cross-entropy, computed together for stability | `layers/SoftmaxCrossEntropy.h` |
-| SGD, SGD with momentum, Adam | `common/Optimizer.h`, `common/Parameter.h` |
-| Network: shape checking, forward, backward, training step | `models/ConvNet.h` |
-| MNIST's IDX file format | `data/MnistLoader.h` |
-| Accuracy, precision, recall, F1, confusion matrix | `metrics/ConfusionMatrix.h` |
-
-## Repository Layout
-
-```
-VisionModels.sln
-VisionModels/include/        header-only library
-  common/                    Tensor (NCHW), Parameter, Optimizer, ThreadPool, ParallelFor, Validation
-  layers/                    Layer interface, Conv2D, MaxPool2D, ReLU, Flatten, Dense, SoftmaxCrossEntropy
-  models/                    ConvNet, DigitCnn
-  data/                      ImageDataset, MnistLoader, SyntheticDigits
-  metrics/                   ConfusionMatrix
-  pipelines/                 ExecutionStrategy, ImageClassifierTrainer
-  cuda/                      CudaRuntime.h, GpuConvNet.h (plain C++ interfaces to GPU code)
-VisionModels.Cuda/           static library: CUDA kernels (.cu, built by nvcc) or CPU-only stand-ins
-VisionModels.Examples/       Main.cpp: train on MNIST, compare strategies
-VisionModels.Tests/          Google Test Unit Tests
-scripts/download_mnist.*     fetch MNIST into resources/mnist
-```
-
-## Getting started
+## Getting Started
 
 ### 1. Get MNIST
 
@@ -222,6 +173,24 @@ bin/Release/x64/VisionModels.Examples.exe --strategy cuda --epochs 10
 It prints model summary, loss while training, then test accuracy,
 confusion matrix and some mistakes.
 
+## Repository Layout
+
+```
+VisionModels.sln
+VisionModels/include/        header-only library
+  common/                    Tensor (NCHW), Parameter, Optimizer, ThreadPool, ParallelFor, Validation
+  layers/                    Layer interface, Conv2D, MaxPool2D, ReLU, Flatten, Dense, SoftmaxCrossEntropy
+  models/                    ConvNet, DigitCnn
+  data/                      ImageDataset, MnistLoader, SyntheticDigits
+  metrics/                   ConfusionMatrix
+  pipelines/                 ExecutionStrategy, ImageClassifierTrainer
+  cuda/                      CudaRuntime.h, GpuConvNet.h (plain C++ interfaces to GPU code)
+VisionModels.Cuda/           static library: CUDA kernels (.cu, built by nvcc) or CPU-only stand-ins
+VisionModels.Examples/       Main.cpp: train on MNIST, compare strategies
+VisionModels.Tests/          Google Test Unit Tests
+scripts/download_mnist.*     fetch MNIST into resources/mnist
+```
+
 ## Using Library
 
 ```cpp
@@ -259,7 +228,39 @@ float loss = net.trainBatch(images, labels, OptimizerSettings::withMomentum(0.01
 `add...()` checks that each layer fits one before, so a wrong size is
 reported when network is built, not during training.
 
-## How three strategies work
+## Model
+
+`makeDigitCnn()` in `models/DigitCnn.h` builds a small LeNet-style network:
+
+```
+Input                                     [1, 28, 28]
+Conv2D(1 -> 8, 3x3, stride 1, padding 1)  [8, 28, 28]   80 parameters
+ReLU                                      [8, 28, 28]
+MaxPool2D(2x2, stride 2)                  [8, 14, 14]
+Conv2D(8 -> 16, 3x3, stride 1, padding 1) [16, 14, 14]  1168 parameters
+ReLU                                      [16, 14, 14]
+MaxPool2D(2x2, stride 2)                  [16, 7, 7]
+Flatten                                   [784]
+Dense(784 -> 64)                          [64]          50240 parameters
+ReLU                                      [64]
+Dense(64 -> 10)                           [10]          650 parameters
+Total parameters: 52138
+```
+
+followed by softmax cross-entropy loss. Each header explains its layer:
+
+| Idea | Header |
+|---|---|
+| Convolution: weight sharing, padding, stride, one bias per filter, He init | `layers/Conv2D.h` |
+| Max pooling and routing its gradient to window's winner | `layers/MaxPool2D.h` |
+| ReLU, Flatten, fully connected layer | `layers/ReLU.h`, `layers/Flatten.h`, `layers/Dense.h` |
+| Softmax + cross-entropy, computed together for stability | `layers/SoftmaxCrossEntropy.h` |
+| SGD, SGD with momentum, Adam | `common/Optimizer.h`, `common/Parameter.h` |
+| Network: shape checking, forward, backward, training step | `models/ConvNet.h` |
+| MNIST's IDX file format | `data/MnistLoader.h` |
+| Accuracy, precision, recall, F1, confusion matrix | `metrics/ConfusionMatrix.h` |
+
+## How Three Strategies Work
 
 **Sequential.** Each layer is written as loops over "items", where an item owns
 its outputs: one output feature map in convolution's forward pass, one filter's 
@@ -279,7 +280,7 @@ training set stay in GPU memory, so a step sends up only 64 image indices
 and gets back 64 losses. Each kernel gives one GPU thread one output number and
 mirrors a CPU loop. Trainer copies weights back into `ConvNet` after
 each epoch, so model is always usable on CPU. Results match CPU to
-within float rounding. See [CUDA version](#cuda-version).
+within float rounding. See [CUDA Implementation](#cuda-implementation).
 
 ## Tests
 
@@ -297,7 +298,7 @@ bin/Release/x64/VisionModels.Tests.exe
 - Network learning synthetic digits to over 90% on each strategy;
 - IDX reader against hand-made files, including broken ones.
 
-## Ideas for next steps
+## Future Ideas
 
 - **im2col + matrix multiply** for Conv2D, and tiled shared-memory kernels on GPU.
 - **Batch normalization** (its shift makes conv bias redundant) and **dropout**.
