@@ -24,105 +24,15 @@ epochs on GPU (4.7 s) reach **98.82%** test accuracy.
 
 ## Contents
 
-- [CUDA Implementation](#cuda-implementation)
 - [Getting Started](#getting-started)
 - [Repository Layout](#repository-layout)
 - [Using Library](#using-library)
 - [Model](#model)
 - [How Three Strategies Work](#how-three-strategies-work)
+- [CUDA Implementation](#cuda-implementation)
 - [Tests](#tests)
 - [Future Ideas](#future-ideas)
 - [License](#license)
-
-## CUDA Implementation
-
-`cuda::GpuConvNet` (`VisionModels/include/cuda/GpuConvNet.h`, implemented in
-`VisionModels.Cuda/src/GpuConvNet.cu`) trains same network as CPU `ConvNet`, 
-entirely on GPU.
-
-### Keeping Data on GPU
-
-Copies between CPU and GPU memory are slow compared with arithmetic on
-either side, so design keeps them to a minimum:
-
-| Where | What | When it crosses |
-|---|---|---|
-| GPU | weights, gradients, momentum / Adam state | up once at start, down after each epoch |
-| GPU | activations and their gradients, one buffer per layer sized for largest batch | never |
-| GPU | Whole training set (60,000 x 784 floats = 188 MB) | up once |
-| CPU -> GPU | Batch's 64 image indices | every step (256 bytes) |
-| GPU -> CPU | Batch's 64 losses | every step (256 bytes) |
-
-A `gatherBatch` kernel copies chosen images out of resident training
-set into input buffer. Shuffling stays on CPU, using same random 
-engine as CPU strategies, so all three strategies see same batches.
-
-### One Thread per Output Number
-
-Every kernel (`src/detail/ConvNetKernels.cuh`) gives one GPU thread one number
-to produce and mirrors a loop of CPU layer:
-
-| Kernel | One thread computes |
-|---|---|
-| `conv2dForward` | one output pixel of one feature map |
-| `conv2dBackwardInput` | one input pixel's gradient |
-| `conv2dBackwardParametersPartial` + `reduceBatch` | one weight's gradient over one sample, then summed over batch |
-| `maxPoolForward` / `maxPoolBackward` | one pooling window |
-| `denseForward`, `denseBackwardParameters`, `denseBackwardInput` | one output, one weight gradient, one input gradient |
-| `softmaxCrossEntropy` | one sample's loss and logit gradients |
-| `sgdUpdate`, `momentumUpdate`, `adamUpdate` | one weight |
-
-Two places differ from CPU loops, both to avoid many threads adding into
-same memory:
-
-- **Convolution input gradient.** CPU *scatters*: each output gradient is
-  added to every input pixel under its window. On GPU that would need atomic
-  adds. Instead each thread takes one input pixel and *gathers* from output
-  positions whose window covered it: `oh = (ih + padding - kh) / stride`, when
-  that divides evenly and is in range.
-- **Convolution weight gradient.** One thread per weight summing over whole
-  batch would use only 80 threads for first layer and leave GPU nearly
-  idle. Sum is split in two: one thread per (sample, weight), then one per
-  weight summing across batch.
-
-Max pooling's backward pass does use `atomicAdd`, because overlapping windows
-(stride < kernel) can share a winner; with 2x2 windows and stride 2 additions 
-never collide.
-
-### Accuracy
-
-GPU computes in float, sums in a different order than CPU, and fuses
-multiplies and adds (FMA). Its results therefore match CPU `ConvNet<float>`
-to within about 1e-4 relative, not bit for bit. Unit tests check this for
-logits, gradients and optimizer steps. Training curves on MNIST are
-indistinguishable (loss 0.2251 after one epoch with every strategy).
-
-### Building
-
-`VisionModels.Cuda` project compiles `.cu` files through `nvcc-build.cmd`,
-which sets up MSVC v143 environment for nvcc (CUDA 13 does not accept
-MSVC 19.50+ as its host compiler) and targets compute capability 89 by default:
-
-```bash
-msbuild VisionModels.sln /p:Configuration=Release /p:Platform=x64 /p:CudaComputeCapability=86
-```
-
-Without CUDA Toolkit, project still is able to compile `CudaUnavailable.cpp` and 
-`GpuConvNetUnavailable.cpp`. So everything links and `Cuda` reports that 
-it is not available.
-
-### Where Time Goes, and What Would Make It Faster
-
-One epoch takes about 0.47 s, roughly 0.5 ms per step of 64 images. At this
-size GPU is mostly waiting on kernel launches (about 35 per step: 9 forward,
-17 backward, 1 gather, 8 optimizer) and per-step loss copy, not on arithmetic. 
-
-Things to try:
-- Launch with CUDA Graphs, or fuse Conv2D + ReLU and Dense + ReLU;
-- Larger batches (e.g. `--batch 256`);
-- Shared-memory tiling in convolution and dense kernels, or im2col plus a
-  tiled matrix multiply;
-- Profile it with Nsight Compute to see which kernels dominate.
 
 ## Getting Started
 
@@ -281,6 +191,96 @@ and gets back 64 losses. Each kernel gives one GPU thread one output number and
 mirrors a CPU loop. Trainer copies weights back into `ConvNet` after
 each epoch, so model is always usable on CPU. Results match CPU to
 within float rounding. See [CUDA Implementation](#cuda-implementation).
+
+## CUDA Implementation
+
+`cuda::GpuConvNet` (`VisionModels/include/cuda/GpuConvNet.h`, implemented in
+`VisionModels.Cuda/src/GpuConvNet.cu`) trains same network as CPU `ConvNet`, 
+entirely on GPU.
+
+### Keeping Data on GPU
+
+Copies between CPU and GPU memory are slow compared with arithmetic on
+either side, so design keeps them to a minimum:
+
+| Where | What | When it crosses |
+|---|---|---|
+| GPU | weights, gradients, momentum / Adam state | up once at start, down after each epoch |
+| GPU | activations and their gradients, one buffer per layer sized for largest batch | never |
+| GPU | Whole training set (60,000 x 784 floats = 188 MB) | up once |
+| CPU -> GPU | Batch's 64 image indices | every step (256 bytes) |
+| GPU -> CPU | Batch's 64 losses | every step (256 bytes) |
+
+A `gatherBatch` kernel copies chosen images out of resident training
+set into input buffer. Shuffling stays on CPU, using same random 
+engine as CPU strategies, so all three strategies see same batches.
+
+### One Thread per Output Number
+
+Every kernel (`src/detail/ConvNetKernels.cuh`) gives one GPU thread one number
+to produce and mirrors a loop of CPU layer:
+
+| Kernel | One thread computes |
+|---|---|
+| `conv2dForward` | one output pixel of one feature map |
+| `conv2dBackwardInput` | one input pixel's gradient |
+| `conv2dBackwardParametersPartial` + `reduceBatch` | one weight's gradient over one sample, then summed over batch |
+| `maxPoolForward` / `maxPoolBackward` | one pooling window |
+| `denseForward`, `denseBackwardParameters`, `denseBackwardInput` | one output, one weight gradient, one input gradient |
+| `softmaxCrossEntropy` | one sample's loss and logit gradients |
+| `sgdUpdate`, `momentumUpdate`, `adamUpdate` | one weight |
+
+Two places differ from CPU loops, both to avoid many threads adding into
+same memory:
+
+- **Convolution input gradient.** CPU *scatters*: each output gradient is
+  added to every input pixel under its window. On GPU that would need atomic
+  adds. Instead each thread takes one input pixel and *gathers* from output
+  positions whose window covered it: `oh = (ih + padding - kh) / stride`, when
+  that divides evenly and is in range.
+- **Convolution weight gradient.** One thread per weight summing over whole
+  batch would use only 80 threads for first layer and leave GPU nearly
+  idle. Sum is split in two: one thread per (sample, weight), then one per
+  weight summing across batch.
+
+Max pooling's backward pass does use `atomicAdd`, because overlapping windows
+(stride < kernel) can share a winner; with 2x2 windows and stride 2 additions 
+never collide.
+
+### Accuracy
+
+GPU computes in float, sums in a different order than CPU, and fuses
+multiplies and adds (FMA). Its results therefore match CPU `ConvNet<float>`
+to within about 1e-4 relative, not bit for bit. Unit tests check this for
+logits, gradients and optimizer steps. Training curves on MNIST are
+indistinguishable (loss 0.2251 after one epoch with every strategy).
+
+### Building
+
+`VisionModels.Cuda` project compiles `.cu` files through `nvcc-build.cmd`,
+which sets up MSVC v143 environment for nvcc (CUDA 13 does not accept
+MSVC 19.50+ as its host compiler) and targets compute capability 89 by default:
+
+```bash
+msbuild VisionModels.sln /p:Configuration=Release /p:Platform=x64 /p:CudaComputeCapability=86
+```
+
+Without CUDA Toolkit, project still is able to compile `CudaUnavailable.cpp` and 
+`GpuConvNetUnavailable.cpp`. So everything links and `Cuda` reports that 
+it is not available.
+
+### Where Time Goes, and What Would Make It Faster
+
+One epoch takes about 0.47 s, roughly 0.5 ms per step of 64 images. At this
+size GPU is mostly waiting on kernel launches (about 35 per step: 9 forward,
+17 backward, 1 gather, 8 optimizer) and per-step loss copy, not on arithmetic. 
+
+Things to try:
+- Launch with CUDA Graphs, or fuse Conv2D + ReLU and Dense + ReLU;
+- Larger batches (e.g. `--batch 256`);
+- Shared-memory tiling in convolution and dense kernels, or im2col plus a
+  tiled matrix multiply;
+- Profile it with Nsight Compute to see which kernels dominate.
 
 ## Tests
 
