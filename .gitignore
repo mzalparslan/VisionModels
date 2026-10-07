@@ -1,0 +1,34 @@
+# Visual Studio user and workspace files
+.vs/
+*.vcxproj.user
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Visual Studio build directories
+Debug/
+Release/
+x64/
+[Bb]in/
+[Oo]bj/
+
+# NuGet packages (Google Test); restored by Visual Studio from
+# VisionModels.Tests/packages.config.
+packages/
+
+# Makefile build output
+build/
+
+# MNIST (downloaded by scripts/download_mnist.ps1 or .sh)
+resources/mnist/
+
+# Compiled C/C++ files
+*.obj
+*.o
+*.d
+*.lib
+*.a
+*.exe
+*.pdb
+*.pch

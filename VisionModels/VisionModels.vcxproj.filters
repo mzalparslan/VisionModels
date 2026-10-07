@@ -1,0 +1,106 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="common">
+      <UniqueIdentifier>{f9ef9a77-9919-5efb-8739-cfa4fbe067e5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="cuda">
+      <UniqueIdentifier>{200e9dc9-d20c-548a-bd9f-882d901e51af}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="data">
+      <UniqueIdentifier>{96566216-72c6-508d-bc0c-b1fa5a1f84b0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="layers">
+      <UniqueIdentifier>{7bf0f512-7f5d-54b1-b666-5cccc09d043d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="metrics">
+      <UniqueIdentifier>{84bbd539-077f-5efb-b981-11e8c21348eb}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="models">
+      <UniqueIdentifier>{6813d6bd-be35-5643-9930-69369d68cf9b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="pipelines">
+      <UniqueIdentifier>{c6b37a07-ccd3-5198-ab5c-83bfb8fd8d09}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="include\common\BenchmarkTimer.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="include\common\Exceptions.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="include\common\Optimizer.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="include\common\ParallelFor.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="include\common\Parameter.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="include\common\Tensor.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="include\common\ThreadPool.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="include\common\Validation.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="include\layers\Conv2D.h">
+      <Filter>layers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\layers\Dense.h">
+      <Filter>layers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\layers\Flatten.h">
+      <Filter>layers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\layers\Layer.h">
+      <Filter>layers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\layers\LayerSpec.h">
+      <Filter>layers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\layers\MaxPool2D.h">
+      <Filter>layers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\layers\ReLU.h">
+      <Filter>layers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\layers\SoftmaxCrossEntropy.h">
+      <Filter>layers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\models\ConvNet.h">
+      <Filter>models</Filter>
+    </ClInclude>
+    <ClInclude Include="include\models\DigitCnn.h">
+      <Filter>models</Filter>
+    </ClInclude>
+    <ClInclude Include="include\data\ImageDataset.h">
+      <Filter>data</Filter>
+    </ClInclude>
+    <ClInclude Include="include\data\MnistLoader.h">
+      <Filter>data</Filter>
+    </ClInclude>
+    <ClInclude Include="include\data\SyntheticDigits.h">
+      <Filter>data</Filter>
+    </ClInclude>
+    <ClInclude Include="include\metrics\ConfusionMatrix.h">
+      <Filter>metrics</Filter>
+    </ClInclude>
+    <ClInclude Include="include\pipelines\ExecutionStrategy.h">
+      <Filter>pipelines</Filter>
+    </ClInclude>
+    <ClInclude Include="include\pipelines\ImageClassifierTrainer.h">
+      <Filter>pipelines</Filter>
+    </ClInclude>
+    <ClInclude Include="include\cuda\CudaRuntime.h">
+      <Filter>cuda</Filter>
+    </ClInclude>
+    <ClInclude Include="include\cuda\GpuConvNet.h">
+      <Filter>cuda</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>

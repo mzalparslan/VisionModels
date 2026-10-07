@@ -1,0 +1,60 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="unit">
+      <UniqueIdentifier>{325e8e94-dc4f-5666-ae2d-972a79af551f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="unit\common">
+      <UniqueIdentifier>{4c2cd0b6-1d07-57ee-92ff-5e48714c30b2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="unit\cuda">
+      <UniqueIdentifier>{8afa0bb4-893d-5f07-88c2-905084a980a9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="unit\data">
+      <UniqueIdentifier>{c2b988a2-8fae-5238-a821-5ad20dc26e60}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="unit\layers">
+      <UniqueIdentifier>{b5e214ee-3939-5dbe-a099-d1a8c3742033}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="unit\models">
+      <UniqueIdentifier>{fa03fe92-54e7-5d88-88be-3136037bbbbc}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="unit\pipelines">
+      <UniqueIdentifier>{000a1e14-e1d0-50ea-ac4b-c61ec3c54bfc}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="pch.h" />
+    <ClInclude Include="TestSupport.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="pch.cpp" />
+    <ClCompile Include="unit\common\CommonTests.cpp">
+      <Filter>unit\common</Filter>
+    </ClCompile>
+    <ClCompile Include="unit\layers\Conv2DTests.cpp">
+      <Filter>unit\layers</Filter>
+    </ClCompile>
+    <ClCompile Include="unit\layers\LayerTests.cpp">
+      <Filter>unit\layers</Filter>
+    </ClCompile>
+    <ClCompile Include="unit\layers\SoftmaxCrossEntropyTests.cpp">
+      <Filter>unit\layers</Filter>
+    </ClCompile>
+    <ClCompile Include="unit\models\ConvNetTests.cpp">
+      <Filter>unit\models</Filter>
+    </ClCompile>
+    <ClCompile Include="unit\data\DataTests.cpp">
+      <Filter>unit\data</Filter>
+    </ClCompile>
+    <ClCompile Include="unit\pipelines\ImageClassifierTrainerTests.cpp">
+      <Filter>unit\pipelines</Filter>
+    </ClCompile>
+    <ClCompile Include="unit\cuda\GpuConvNetTests.cpp">
+      <Filter>unit\cuda</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="packages.config" />
+  </ItemGroup>
+</Project>

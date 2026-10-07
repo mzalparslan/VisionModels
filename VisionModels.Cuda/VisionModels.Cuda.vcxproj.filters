@@ -1,0 +1,59 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="include">
+      <UniqueIdentifier>{dd995d3f-b7a5-51dd-b031-776b1955bd5e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="include\cuda">
+      <UniqueIdentifier>{eff5b0dc-7cab-59bc-a42d-8b754b8ae693}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src">
+      <UniqueIdentifier>{1b29f6b4-b3c0-59f2-9e20-df7bb1102045}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\detail">
+      <UniqueIdentifier>{dbcfaccc-cba7-564d-acba-1745c450166a}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\VisionModels\include\cuda\CudaRuntime.h">
+      <Filter>include\cuda</Filter>
+    </ClInclude>
+    <ClInclude Include="..\VisionModels\include\cuda\GpuConvNet.h">
+      <Filter>include\cuda</Filter>
+    </ClInclude>
+    <ClInclude Include="src\detail\CudaHost.cuh">
+      <Filter>src\detail</Filter>
+    </ClInclude>
+    <ClInclude Include="src\detail\DeviceArray.cuh">
+      <Filter>src\detail</Filter>
+    </ClInclude>
+    <ClInclude Include="src\detail\ConvNetKernels.cuh">
+      <Filter>src\detail</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\CudaUnavailable.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="src\GpuConvNetUnavailable.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="src\CudaRuntime.cu">
+      <Filter>src</Filter>
+    </CustomBuild>
+    <CustomBuild Include="src\GpuConvNet.cu">
+      <Filter>src</Filter>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="src\CudaRuntime.cu">
+      <Filter>src</Filter>
+    </None>
+    <None Include="src\GpuConvNet.cu">
+      <Filter>src</Filter>
+    </None>
+    <None Include="nvcc-build.cmd" />
+  </ItemGroup>
+</Project>
